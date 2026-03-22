@@ -3,7 +3,7 @@
 // El frontend (CDMX, UTC-6) envía la hora ya ajustada -1h (Oregon es 1h atrás de CDMX).
 // Ej: usuario programa 09:00 CDMX → frontend envía 08:00 → servidor dispara 08:00 Oregon = 09:00 CDMX ✓
 // Todos los endpoints son GET con query params para evitar preflight CORS.
-// Esto permite llamarlos desde archivos HTML locales (file://) sin bloqueos.
+// El frontend envía fechas/horas en UTC. msHasta() usa Date.UTC() explícitamente.
 //
 // GET /api/voice/disparar?url=...        → dispara Voice Monkey de inmediato
 // GET /api/voice/programar?url=...&fecha=...&hora=...&tarjeta=...&id=...
@@ -66,11 +66,12 @@ function cargarAlertas() {
   } catch(e) { console.warn("No se pudieron cargar alertas:", e.message); }
 }
 
-// ── ms hasta fecha+hora local del servidor ───────────────────────────────────
+// ── ms hasta fecha+hora en UTC (el frontend envía todo en UTC) ───────────────
+// Usa Date.UTC() para que sea explícitamente UTC independiente del SO del servidor
 function msHasta(fecha, hora) {
   const [y, m, d] = fecha.split("-").map(Number);
   const [hh, mm]  = hora.split(":").map(Number);
-  return new Date(y, m - 1, d, hh, mm, 0, 0).getTime() - Date.now();
+  return Date.UTC(y, m - 1, d, hh, mm, 0, 0) - Date.now();
 }
 
 // ── Llamar a Voice Monkey (desde el servidor, sin CORS) ──────────────────────
@@ -86,7 +87,7 @@ function agendarAlerta(alerta) {
   const ms = msHasta(alerta.fecha, alerta.hora);
   if (ms < 0) { alerta.estado = "vencida"; return; }
 
-  console.log(`[AGENDA] ${alerta.tarjeta} → ${alerta.fecha} ${alerta.hora} Oregon (en ${Math.round(ms/1000)}s) | Ahora servidor: ${new Date().toLocaleTimeString('es-MX',{timeZone:'America/Los_Angeles'})}`);
+  console.log(`[AGENDA] ${alerta.tarjeta} → ${alerta.fecha} ${alerta.hora} UTC (en ${Math.round(ms/1000)}s) | Ahora UTC: ${new Date().toISOString()}`);
 
   alerta.timerId = setTimeout(async () => {
     console.log(`[DISPARO] ${alerta.tarjeta} a las ${new Date().toLocaleString()}`);
@@ -154,7 +155,7 @@ app.get("/api/voice/programar", (req, res) => {
     return res.json({ ok: false, error: "hora inválida (HH:MM)" });
 
   const ms = msHasta(fecha, hora);
-  if (ms < -60000)
+  if (ms < -300000) // rechazar solo si pasó hace más de 5 minutos
     return res.json({ ok: false, error: `Fecha/hora ya pasó (hace ${Math.round(-ms/1000)}s)` });
 
   const alertaId = id || `${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
