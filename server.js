@@ -1,4 +1,6 @@
 // ─── server.js — PayTrack Voice API v3 ──────────────────────────────────────
+// Servidor desplegado en Oregon (US West) → UTC-7 / Pacific Time
+// El frontend (CDMX, UTC-6) envía la hora ya ajustada +1h para compensar.
 // Todos los endpoints son GET con query params para evitar preflight CORS.
 // Esto permite llamarlos desde archivos HTML locales (file://) sin bloqueos.
 //
@@ -46,7 +48,7 @@ function agendarAlerta(alerta) {
   const ms = msHasta(alerta.fecha, alerta.hora);
   if (ms < 0) { alerta.estado = "vencida"; return; }
 
-  console.log(`[AGENDA] ${alerta.tarjeta} → ${alerta.fecha} ${alerta.hora} (en ${Math.round(ms/1000)}s)`);
+  console.log(`[AGENDA] ${alerta.tarjeta} → ${alerta.fecha} ${alerta.hora} Oregon (en ${Math.round(ms/1000)}s) | Ahora servidor: ${new Date().toLocaleTimeString('es-MX',{timeZone:'America/Los_Angeles'})}`);
 
   alerta.timerId = setTimeout(async () => {
     console.log(`[DISPARO] ${alerta.tarjeta} a las ${new Date().toLocaleString()}`);
@@ -167,9 +169,14 @@ app.get("/api/voice/alertas", (_req, res) => {
 });
 
 // ── Health check ─────────────────────────────────────────────────────────────
-app.get("/", (_req, res) => res.json({
+app.get("/", (_req, res) => {
+  const ahora = new Date();
+  return res.json({
   servicio: "PayTrack Voice API",
   version:  "3.0.0",
+  horaServidor: ahora.toLocaleString("es-MX", { timeZone: "America/Los_Angeles" }) + " (Oregon/Pacific)",
+  horaUTC: ahora.toISOString(),
+  nota: "Recibe hora ya ajustada +1h desde CDMX",
   nota:     "Todos los endpoints son GET para evitar preflight CORS desde file://",
   alertasEnMemoria: alertas.size,
   endpoints: [
@@ -178,7 +185,8 @@ app.get("/", (_req, res) => res.json({
     "GET /api/voice/cancelar?id=...",
     "GET /api/voice/alertas",
   ],
-}));
+});
+});
 
 app.listen(PORT, () => {
   console.log(`\n🚀 PayTrack Voice API v3 → puerto ${PORT}`);
