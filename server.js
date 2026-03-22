@@ -75,6 +75,10 @@ function agendarAlerta(alerta) {
 // Dispara Voice Monkey de inmediato — GET simple, sin preflight CORS
 // ════════════════════════════════════════════════════════════════════════════
 app.get("/api/voice/disparar", async (req, res) => {
+  console.log("📥 GET /disparar recibido:", {
+    device: (() => { try { return new URL(req.query.url||"").searchParams.get("device"); } catch { return "?"; } })(),
+    timestamp: new Date().toISOString(),
+  });
   const { url } = req.query;
 
   if (!url || !url.startsWith("https://api-v2.voicemonkey.io/")) {
@@ -96,6 +100,12 @@ app.get("/api/voice/disparar", async (req, res) => {
 // Agenda alerta — GET simple, sin preflight CORS
 // ════════════════════════════════════════════════════════════════════════════
 app.get("/api/voice/programar", (req, res) => {
+  console.log("📥 GET /programar recibido:", {
+    ...req.query,
+    url: req.query.url ? req.query.url.substring(0,60)+"..." : undefined, // no loggear token completo
+    timestamp: new Date().toISOString(),
+    horaOregon: new Date().toLocaleString("es-MX",{timeZone:"America/Los_Angeles"}),
+  });
   const { url, fecha, hora, tarjeta, id } = req.query;
 
   if (!url || !url.startsWith("https://api-v2.voicemonkey.io/"))
@@ -138,6 +148,7 @@ app.get("/api/voice/programar", (req, res) => {
 // Cancela alerta — GET simple para evitar preflight CORS
 // ════════════════════════════════════════════════════════════════════════════
 app.get("/api/voice/cancelar", (req, res) => {
+  console.log("📥 GET /cancelar recibido:", { id: req.query.id, timestamp: new Date().toISOString() });
   const { id } = req.query;
   const alerta = alertas.get(id);
 
@@ -191,6 +202,8 @@ app.get("/", (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`\n🚀 PayTrack Voice API v3 → puerto ${PORT}`);
+  console.log('🕐 Servidor iniciado:', new Date().toISOString());
+  console.log('🌍 Hora Oregon/Pacific:', new Date().toLocaleString('es-MX', {timeZone:'America/Los_Angeles'}));
   console.log(`   GET /api/voice/disparar?url=...`);
   console.log(`   GET /api/voice/programar?url=...&fecha=...&hora=...`);
   console.log(`   GET /api/voice/cancelar?id=...`);
