@@ -23,9 +23,8 @@ app.get("/api/voice/test", (req, res) => {
   });
 });
 
-// 🔹 Endpoint para disparar Voice Monkey
+// 🔹 Endpoint POST para disparar Voice Monkey (producción)
 app.post("/api/voice/disparar", async (req, res) => {
-  // Usamos la URL de la variable de entorno de Render
   const voiceUrl = process.env.VOICE_URL;
 
   if (!voiceUrl) {
@@ -40,6 +39,22 @@ app.post("/api/voice/disparar", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// 🔹 Nuevo endpoint GET temporal para navegador
+app.get("/api/voice/disparar", async (req, res) => {
+  const voiceUrl = process.env.VOICE_URL;
+
+  if (!voiceUrl) {
+    return res.send("No hay URL de Voice Monkey configurada");
+  }
+
+  try {
+    await fetch(voiceUrl, { method: "GET" });
+    res.send("Voice Monkey disparado correctamente ✅ desde navegador");
+  } catch (error) {
+    res.status(500).send("Error al disparar Voice Monkey: " + error.message);
   }
 });
 
