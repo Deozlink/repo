@@ -1,6 +1,7 @@
 // ─── server.js — PayTrack Voice API v3 ──────────────────────────────────────
 // Servidor desplegado en Oregon (US West) → UTC-7 / Pacific Time
-// El frontend (CDMX, UTC-6) envía la hora ya ajustada +1h para compensar.
+// El frontend (CDMX, UTC-6) envía la hora ya ajustada -1h (Oregon es 1h atrás de CDMX).
+// Ej: usuario programa 09:00 CDMX → frontend envía 08:00 → servidor dispara 08:00 Oregon = 09:00 CDMX ✓
 // Todos los endpoints son GET con query params para evitar preflight CORS.
 // Esto permite llamarlos desde archivos HTML locales (file://) sin bloqueos.
 //
@@ -176,7 +177,7 @@ app.get("/", (_req, res) => {
   version:  "3.0.0",
   horaServidor: ahora.toLocaleString("es-MX", { timeZone: "America/Los_Angeles" }) + " (Oregon/Pacific)",
   horaUTC: ahora.toISOString(),
-  nota: "Recibe hora ya ajustada +1h desde CDMX",
+  nota: "Recibe hora ajustada -1h desde CDMX (Oregon 1h atrás de CDMX)",
   nota:     "Todos los endpoints son GET para evitar preflight CORS desde file://",
   alertasEnMemoria: alertas.size,
   endpoints: [
