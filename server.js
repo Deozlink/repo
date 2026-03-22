@@ -10,12 +10,19 @@
 //                                        → agenda alerta para fecha/hora
 // GET /api/voice/cancelar?id=...         → cancela alerta agendada
 // GET /api/voice/alertas                 → lista alertas (debug)
+// GET /api/voice/disparar-ahora?url=...  → disparo inmediato (pruebas)
 // GET /                                  → health check
 // ─────────────────────────────────────────────────────────────────────────────
 import express from "express";
 import cors    from "cors";
 import dotenv  from "dotenv";
 import fetch   from "node-fetch";
+import fs      from "fs";
+import path    from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ALERTAS_FILE = path.join(__dirname, "alertas_pendientes.json");
 
 dotenv.config();
 
@@ -28,6 +35,36 @@ app.use(express.json()); // por si acaso llega algún POST en el futuro
 
 // ── Alertas en memoria ───────────────────────────────────────────────────────
 const alertas = new Map();
+
+// ── Persistencia en disco — sobrevive reinicios de Render ────────────────────
+function guardarAlertas() {
+  try {
+    const pendientes = [...alertas.values()]
+      .filter(a => a.estado === "programada" || a.estado === "pendiente")
+      .map(({ timerId, ...rest }) => rest); // no serializar timerId
+    fs.writeFileSync(ALERTAS_FILE, JSON.stringify(pendientes, null, 2));
+  } catch(e) { console.warn("No se pudo guardar alertas en disco:", e.message); }
+}
+
+function cargarAlertas() {
+  try {
+    if(!fs.existsSync(ALERTAS_FILE)) return;
+    const pendientes = JSON.parse(fs.readFileSync(ALERTAS_FILE, "utf8"));
+    const ahora = Date.now();
+    let reagendadas = 0;
+    for(const alerta of pendientes) {
+      const ms = msHasta(alerta.fecha, alerta.hora);
+      if(ms > -60000) { // no más de 1 minuto en el pasado
+        alerta.timerId = null;
+        alertas.set(alerta.id, alerta);
+        agendarAlerta(alerta);
+        reagendadas++;
+      }
+    }
+    if(reagendadas > 0)
+      console.log(`🔄 Reagendadas ${reagendadas} alerta(s) tras reinicio del servidor`);
+  } catch(e) { console.warn("No se pudieron cargar alertas:", e.message); }
+}
 
 // ── ms hasta fecha+hora local del servidor ───────────────────────────────────
 function msHasta(fecha, hora) {
@@ -65,6 +102,7 @@ function agendarAlerta(alerta) {
     }
     alerta.timerId = null;
     alertas.set(alerta.id, alerta);
+    guardarAlertas(); // actualizar disco tras ejecución
   }, ms);
 
   alerta.estado = "programada";
@@ -138,9 +176,33 @@ app.get("/api/voice/programar", (req, res) => {
 
   agendarAlerta(alerta);
   alertas.set(alertaId, alerta);
+  guardarAlertas(); // persistir en disco
 
   console.log(`[PROGRAMAR] id=${alertaId} tarjeta=${alerta.tarjeta} ${fecha} ${hora} (en ${Math.max(0,Math.round(ms/1000))}s)`);
   return res.json({ ok: true, id: alertaId, estado: alerta.estado, msHasta: Math.max(ms, 0) });
+});
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// GET /api/voice/disparar-ahora?url=...&tarjeta=...
+// Dispara inmediatamente sin validar fecha — para pruebas desde el frontend.
+// GET simple: sin preflight CORS, funciona desde file://
+// ════════════════════════════════════════════════════════════════════════════
+app.get("/api/voice/disparar-ahora", async (req, res) => {
+  const { url, tarjeta } = req.query;
+  console.log(`🔔 GET /disparar-ahora para ${tarjeta || "prueba"}`);
+
+  if(!url || !url.trim())
+    return res.json({ ok: false, error: "URL requerida" });
+
+  try {
+    const r = await llamarVoiceMonkey(url.trim());
+    console.log(`✅ Alerta inmediata disparada para ${tarjeta || "prueba"}, status OK`);
+    return res.json({ ok: true, mensaje: "Alerta disparada inmediatamente", via: "backend" });
+  } catch(e) {
+    console.error(`❌ Error disparar-ahora: ${e.message}`);
+    return res.json({ ok: false, error: e.message });
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -157,6 +219,7 @@ app.get("/api/voice/cancelar", (req, res) => {
   if (alerta.timerId) { clearTimeout(alerta.timerId); alerta.timerId = null; }
   alerta.estado = "cancelada";
   alertas.set(id, alerta);
+  guardarAlertas(); // actualizar disco
 
   console.log(`[CANCELAR] id=${id}`);
   return res.json({ ok: true, id, estado: "cancelada" });
@@ -196,9 +259,13 @@ app.get("/", (_req, res) => {
     "GET /api/voice/programar?url=...&fecha=YYYY-MM-DD&hora=HH:MM&tarjeta=...&id=...",
     "GET /api/voice/cancelar?id=...",
     "GET /api/voice/alertas",
+  "GET /api/voice/disparar-ahora?url=...&tarjeta=...",
   ],
 });
 });
+
+// Cargar alertas pendientes del disco antes de escuchar
+cargarAlertas();
 
 app.listen(PORT, () => {
   console.log(`\n🚀 PayTrack Voice API v3 → puerto ${PORT}`);
